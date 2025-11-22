@@ -224,7 +224,6 @@ setInterval(() => {
     }
   });
 }, 3600000); // 1 hour
-}
 
 // Migration function to add new columns to existing users table
 function migrateUsersTable() {
