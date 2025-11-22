@@ -1,0 +1,5 @@
+node_modules/
+ecoplatform.db
+ecoplatform.db-journal
+.env
+*.log
