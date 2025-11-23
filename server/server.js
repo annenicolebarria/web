@@ -1,9 +1,3 @@
-app.listen(3001, '0.0.0.0', () => {
-  console.log('Server running on 0.0.0.0:3001');
-});
-if (typeof File === 'undefined') {
-  global.File = class File {};
-}
 import './polyfill.js'; // must be the first line!
 import express from 'express';
 import cors from 'cors';
