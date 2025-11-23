@@ -1,3 +1,7 @@
+// Polyfill File class for Node.js (fixes undici ReferenceError)
+if (typeof File === 'undefined') {
+  global.File = class File {};
+}
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
