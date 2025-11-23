@@ -1,78 +1,3 @@
-// Backend-powered support state
-// Structure: { [postId]: { supported: boolean, count: number } }
-const [supportByPost, setSupportByPost] = useState({})
-
-// Fetch support state for all posts from backend
-useEffect(() => {
-  const fetchSupport = async () => {
-    if (!forumPosts.length) return
-    const newSupportByPost = {}
-    for (const post of forumPosts) {
-      try {
-        // Get support count
-        const res = await fetch(`http://72.61.125.98:3001/api/posts/${post.id}/support`)
-        let count = 0
-        let supported = false
-        if (res.ok) {
-          const data = await res.json()
-          count = Array.isArray(data) ? data.length : 0
-          // Check if current user supports this post
-          if (user) {
-            supported = data.some(s => String(s.user_id) === String(user.id || user.email))
-          }
-        }
-        newSupportByPost[post.id] = { supported, count }
-      } catch {
-        newSupportByPost[post.id] = { supported: false, count: 0 }
-      }
-    }
-    setSupportByPost(newSupportByPost)
-  }
-  fetchSupport()
-  // Poll for real-time updates
-  const interval = setInterval(fetchSupport, 5000)
-  return () => clearInterval(interval)
-}, [forumPosts, user])
-
-// Support/un-support a post
-const toggleSupport = async (postId) => {
-  if (!requireAuth()) return
-  if (!user) return
-  const supported = supportByPost[postId]?.supported
-  try {
-    const url = `http://72.61.125.98:3001/api/posts/${postId}/support`
-    const method = supported ? 'DELETE' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', ...(supported ? { Authorization: '' } : {}) },
-      // If using JWT, add Authorization header here
-      // body: JSON.stringify({ userId: user.id || user.email })
-    })
-    if (!res.ok) throw new Error('Failed to update support')
-  } catch (e) {
-    setModal({
-      isOpen: true,
-      title: 'Error',
-      message: 'Failed to update support. Please try again.',
-      type: 'error'
-    })
-    return
-  }
-  // Refresh support for this post (will be picked up by polling, but refresh immediately)
-  try {
-    const res = await fetch(`http://72.61.125.98:3001/api/posts/${postId}/support`)
-    if (res.ok) {
-      const data = await res.json()
-      setSupportByPost(prev => ({
-        ...prev,
-        [postId]: {
-          supported: user ? data.some(s => String(s.user_id) === String(user.id || user.email)) : false,
-          count: Array.isArray(data) ? data.length : 0
-        }
-      }))
-    }
-  } catch { }
-}
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, TrendingUp, TrendingDown, MessageCircle, ThumbsDown, ThumbsUp, User, Tag, Video, Image, MapPin, FileText, Users, Award, Lightbulb, BarChart2, Info, CheckCircle, Trash2, CornerDownLeft } from 'lucide-react'
@@ -80,6 +5,9 @@ import { useAuth } from '../context/AuthContext'
 import IdeaCard from '../components/IdeaCard'
 import Modal from '../components/Modal'
 import { markActivityComplete, isActivityComplete, incrementUserStat, addUserActivity, setPostOwner, notifyContentOwner, formatRelativeTime, validateAndFixDate } from './Home'
+
+// Backend-powered support state
+// Structure: { [postId]: { supported: boolean, count: number } }
 
 export default function CollabSpace() {
   const navigate = useNavigate()
@@ -90,7 +18,79 @@ export default function CollabSpace() {
   const [filterByType, setFilterByType] = useState('all') // Filter by pitch type
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info' })
   const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, postId: null })
+  const [supportByPost, setSupportByPost] = useState({})
 
+  // Fetch support state for all posts from backend
+  useEffect(() => {
+    const fetchSupport = async () => {
+      if (!forumPosts.length) return
+      const newSupportByPost = {}
+      for (const post of forumPosts) {
+        try {
+          // Get support count
+          const res = await fetch(`http://72.61.125.98:3001/api/posts/${post.id}/support`)
+          let count = 0
+          let supported = false
+          if (res.ok) {
+            const data = await res.json()
+            count = Array.isArray(data) ? data.length : 0
+            // Check if current user supports this post
+            if (user) {
+              supported = data.some(s => String(s.user_id) === String(user.id || user.email))
+            }
+          }
+          newSupportByPost[post.id] = { supported, count }
+        } catch {
+          newSupportByPost[post.id] = { supported: false, count: 0 }
+        }
+      }
+      setSupportByPost(newSupportByPost)
+    }
+    fetchSupport()
+    // Poll for real-time updates
+    const interval = setInterval(fetchSupport, 5000)
+    return () => clearInterval(interval)
+  }, [forumPosts, user])
+
+  // Support/un-support a post
+  const toggleSupport = async (postId) => {
+    if (!requireAuth()) return
+    if (!user) return
+    const supported = supportByPost[postId]?.supported
+    try {
+      const url = `http://72.61.125.98:3001/api/posts/${postId}/support`
+      const method = supported ? 'DELETE' : 'POST'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...(supported ? { Authorization: '' } : {}) },
+        // If using JWT, add Authorization header here
+        // body: JSON.stringify({ userId: user.id || user.email })
+      })
+      if (!res.ok) throw new Error('Failed to update support')
+    } catch (e) {
+      setModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to update support. Please try again.',
+        type: 'error'
+      })
+      return
+    }
+    // Refresh support for this post (will be picked up by polling, but refresh immediately)
+    try {
+      const res = await fetch(`http://72.61.125.98:3001/api/posts/${postId}/support`)
+      if (res.ok) {
+        const data = await res.json()
+        setSupportByPost(prev => ({
+          ...prev,
+          [postId]: {
+            supported: user ? data.some(s => String(s.user_id) === String(user.id || user.email)) : false,
+            count: Array.isArray(data) ? data.length : 0
+          }
+        }))
+      }
+    } catch { }
+  }
   // Pitch type definitions with objectives and instructions
   const pitchTypes = [
     {
