@@ -547,49 +547,8 @@ export default function CollabSpace() {
     return () => clearInterval(interval)
   }, [user, forumPosts])
 
-  // Load aggregate counts (shared across all users)
-  const loadAggregateCounts = () => {
-    try {
-      const saved = localStorage.getItem('collabspace_aggregate_counts')
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch (error) {
-      console.error('Error loading aggregate counts:', error)
-    }
-    return {}
-  }
 
-  // Save aggregate counts (shared across all users)
-  const saveAggregateCounts = (counts) => {
-    try {
-      localStorage.setItem('collabspace_aggregate_counts', JSON.stringify(counts))
-    } catch (error) {
-      console.error('Error saving aggregate counts:', error)
-    }
-  }
-
-  // Load aggregate poll votes (shared across all users)
-  const loadAggregatePollVotes = () => {
-    try {
-      const saved = localStorage.getItem('collabspace_aggregate_poll_votes')
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch (error) {
-      console.error('Error loading aggregate poll votes:', error)
-    }
-    return {}
-  }
-
-  // Save aggregate poll votes (shared across all users)
-  const saveAggregatePollVotes = (votes) => {
-    try {
-      localStorage.setItem('collabspace_aggregate_poll_votes', JSON.stringify(votes))
-    } catch (error) {
-      console.error('Error saving aggregate poll votes:', error)
-    }
-  }
+  // (Removed aggregate count and poll vote localStorage logic for display)
 
   // Fetch posts from backend
   const fetchPosts = async () => {
@@ -627,7 +586,7 @@ export default function CollabSpace() {
   const [replyingTo, setReplyingTo] = useState({}) // { postId: { 'path': 'text' } } e.g., '0' for comment 0, '0-0' for reply 0 of comment 0
   const [showReplies, setShowReplies] = useState({}) // { postId: { 'path': true/false } }
 
-  // Load user comments from localStorage (per-user)
+  // (Removed: user comments are always backend-powered)
   // Backend-powered comments state
   // Structure: { [postId]: [comments array] }
   const [commentsByPost, setCommentsByPost] = useState({})
@@ -682,50 +641,28 @@ export default function CollabSpace() {
   }
 
   // Confirm delete action
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     const { postId } = deleteConfirmModal
     if (!postId) return
 
-    const post = forumPosts.find(p => p.id === postId)
-    if (!post) return
-
-    // Remove post from state
-    const updatedPosts = forumPosts.filter(p => p.id !== postId)
-    setForumPosts(updatedPosts)
-
-    // Clean up aggregate counts
-    const aggregateCounts = loadAggregateCounts()
-    if (aggregateCounts[postId]) {
-      delete aggregateCounts[postId]
-      saveAggregateCounts(aggregateCounts)
-    }
-
-    // Clean up poll votes if it's a poll
-    if (post.pitchType === 'eco-poll') {
-      const aggregatePollVotes = loadAggregatePollVotes()
-      if (aggregatePollVotes[postId]) {
-        delete aggregatePollVotes[postId]
-        saveAggregatePollVotes(aggregatePollVotes)
-      }
-    }
-
-    // Clean up user reactions (per-user, need to clean for all users)
-    // Note: We can't clean other users' reactions easily, but that's okay
-    // The reactions will just be orphaned but won't cause issues
-
-    // Clean up comments (per-user, need to clean for all users)
-    // Note: Comments will also be orphaned but won't cause issues
-
-    // Clean up post ownership
+    // Call backend API to delete post
     try {
-      const postOwners = JSON.parse(localStorage.getItem('post_owners_collabspace') || '{}')
-      if (postOwners[postId]) {
-        delete postOwners[postId]
-        localStorage.setItem('post_owners_collabspace', JSON.stringify(postOwners))
-      }
-    } catch (error) {
-      console.error('Error cleaning up post ownership:', error)
+      const res = await fetch(`http://72.61.125.98:3001/api/posts/${postId}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) throw new Error('Failed to delete post')
+    } catch (e) {
+      setModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to delete post. Please try again.',
+        type: 'error'
+      })
+      return
     }
+
+    // Refetch posts from backend
+    fetchPosts()
 
     // Close confirmation modal
     setDeleteConfirmModal({ isOpen: false, postId: null })
@@ -784,20 +721,6 @@ export default function CollabSpace() {
       }
       return true
     })
-    .map(post => {
-      // Merge with aggregate counts for accurate sorting
-      const aggregateCounts = loadAggregateCounts()
-      const postCounts = aggregateCounts[post.id] || {}
-      return {
-        ...post,
-        votes: postCounts.votes || post.votes || 0,
-        comments: postCounts.comments || post.comments || 0,
-        reactions: {
-          likes: postCounts.likes || post.reactions?.likes || 0,
-          hearts: postCounts.hearts || post.reactions?.hearts || 0
-        }
-      }
-    })
     .sort((a, b) => {
       if (sortBy === 'trending') {
         // Sort by engagement (votes + comments + likes + hearts)
@@ -825,10 +748,7 @@ export default function CollabSpace() {
       return 0
     })
 
-  // Save posts to localStorage (posts are global)
-  useEffect(() => {
-    localStorage.setItem('collabspace_posts', JSON.stringify(forumPosts))
-  }, [forumPosts])
+  // (Removed saving posts to localStorage. Posts are always fetched from backend.)
 
   // ...userReactions now saved to backend, not localStorage...
 
@@ -861,34 +781,13 @@ export default function CollabSpace() {
     }
   }, [searchParams, setSearchParams])
 
-  // Calculate display count - show aggregate counts (all users)
+  // Calculate display count - always use backend data
   const getDisplayCount = (postId, baseCount, reactionType) => {
     const post = forumPosts.find(p => p.id === postId)
     if (!post) return 0
-
-    // When logged out, show aggregate counts
-    if (!user) {
-      if (reactionType === 'likes') return post.reactions.likes || 0
-      if (reactionType === 'unliked') return post.reactions.hearts || 0
-      if (reactionType === 'votes') {
-        // For votes, show net votes (up - down)
-        const aggregateCounts = loadAggregateCounts()
-        const voteData = aggregateCounts[postId]?.voteData || { up: 0, down: 0 }
-        return voteData.up - voteData.down
-      }
-      if (reactionType === 'comments') return post.comments || 0
-      return 0
-    }
-
-    // When logged in, show aggregate counts
-    if (reactionType === 'likes') return post.reactions.likes || 0
-    if (reactionType === 'unliked') return post.reactions.hearts || 0
-    if (reactionType === 'votes') {
-      // Show net votes (up - down) from aggregate
-      const aggregateCounts = loadAggregateCounts()
-      const voteData = aggregateCounts[postId]?.voteData || { up: 0, down: 0 }
-      return voteData.up - voteData.down
-    }
+    if (reactionType === 'likes') return post.reactions?.likes || 0
+    if (reactionType === 'unliked') return post.reactions?.hearts || 0
+    if (reactionType === 'votes') return post.votes || 0
     if (reactionType === 'comments') return post.comments || 0
     return 0
   }
@@ -920,14 +819,8 @@ export default function CollabSpace() {
       })
       return
     }
-    // Refresh reactions for this post (will be picked up by polling, but refresh immediately)
-    try {
-      const res = await fetch(`http://72.61.125.98:3001/api/likes/${postId}/user/${userId}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUserReactions(prev => ({ ...prev, [postId]: { liked: !!data.liked, unliked: !!data.unliked } }))
-      }
-    } catch { }
+    // Refetch posts to update like counts
+    fetchPosts()
   }
 
   const toggleUnlike = async (postId) => {
@@ -951,105 +844,43 @@ export default function CollabSpace() {
       })
       return
     }
-    // Refresh reactions for this post (will be picked up by polling, but refresh immediately)
-    try {
-      const res = await fetch(`http://72.61.125.98:3001/api/likes/${postId}/user/${userId}`)
-      if (res.ok) {
-        const data = await res.json()
-        setUserReactions(prev => ({ ...prev, [postId]: { liked: !!data.liked, unliked: !!data.unliked } }))
-      }
-    } catch { }
+    // Refetch posts to update unlike counts
+    fetchPosts()
   }
 
-  const handlePollVote = (postId, optionIndex) => {
+  // Poll voting: always refetch from backend after voting
+  const handlePollVote = async (postId, optionIndex) => {
     if (!requireAuth()) return
 
     const post = forumPosts.find(p => p.id === postId)
     if (!post || post.pitchType !== 'eco-poll') return
 
-    const userId = getUserId()
-    const userPollVotesKey = `collabspace_poll_votes_${userId}`
-    const currentUserVotes = JSON.parse(localStorage.getItem(userPollVotesKey) || '{}')
-    const previousVote = currentUserVotes[postId]
-
-    // Load aggregate poll votes
-    const aggregatePollVotes = loadAggregatePollVotes()
-    if (!aggregatePollVotes[postId]) {
-      aggregatePollVotes[postId] = {}
-    }
-
-    // Remove previous vote if exists
-    if (previousVote !== null && previousVote !== undefined) {
-      aggregatePollVotes[postId][previousVote] = Math.max(0, (aggregatePollVotes[postId][previousVote] || 0) - 1)
-    }
-
-    // Add new vote (only if different from previous)
-    if (previousVote !== optionIndex) {
-      aggregatePollVotes[postId][optionIndex] = (aggregatePollVotes[postId][optionIndex] || 0) + 1
-      currentUserVotes[postId] = optionIndex
-
-      // Mark poll activity as complete when user votes (poll IDs 1001-1010 map to eco-poll-1 to eco-poll-10)
-      // Only mark as complete if this is a new vote (previousVote was null/undefined)
-      if (postId >= 1001 && postId <= 1010 && (previousVote === null || previousVote === undefined)) {
-        const activityId = `eco-poll-${postId - 1000}` // 1001 -> eco-poll-1, 1002 -> eco-poll-2, etc.
-        markActivityComplete('collabspace', activityId, userId)
-        // Add activity
-        if (post) {
-          const selectedOption = post.pollOptions[optionIndex]
-          addUserActivity(userId, {
-            type: 'poll-vote',
-            title: `Voted on poll: ${post.title} (${selectedOption})`,
-            postId: post.id
-          })
-        }
-      } else if (postId < 1001 || postId > 1010) {
-        // For non-default polls, add activity on any vote
-        if (post && previousVote === null || previousVote === undefined) {
-          const selectedOption = post.pollOptions[optionIndex]
-          addUserActivity(userId, {
-            type: 'poll-vote',
-            title: `Voted on poll: ${post.title} (${selectedOption})`,
-            postId: post.id
-          })
-        }
-      }
-    } else {
-      // If clicking the same option, remove vote
-      currentUserVotes[postId] = null
-    }
-
-    // Save user poll votes
     try {
-      localStorage.setItem(userPollVotesKey, JSON.stringify(currentUserVotes))
-    } catch (error) {
-      console.error('Error saving user poll votes:', error)
+      const res = await fetch(`http://72.61.125.98:3001/api/polls/${postId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optionIndex })
+      })
+      if (!res.ok) throw new Error('Failed to vote on poll')
+    } catch (e) {
+      setModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to vote on poll. Please try again.',
+        type: 'error'
+      })
+      return
     }
-
-    // Save aggregate poll votes
-    saveAggregatePollVotes(aggregatePollVotes)
-
-    // Update posts state
-    setForumPosts(forumPosts.map(p =>
-      p.id === postId
-        ? {
-          ...p,
-          pollVotes: aggregatePollVotes[postId],
-          totalVotes: Object.values(aggregatePollVotes[postId]).reduce((a, b) => a + b, 0),
-        }
-        : p
-    ))
+    // Refetch posts to update poll votes
+    fetchPosts()
   }
 
+  // Get user's poll vote from backend data (if available)
   const getUserPollVote = (postId) => {
-    if (!user) return null
-    try {
-      const userId = getUserId()
-      const userPollVotesKey = `collabspace_poll_votes_${userId}`
-      const currentUserVotes = JSON.parse(localStorage.getItem(userPollVotesKey) || '{}')
-      return currentUserVotes[postId] ?? null
-    } catch (error) {
-      return null
-    }
+    const post = forumPosts.find(p => p.id === postId)
+    if (!post || !user) return null
+    // If backend provides userPollVote, use it
+    return post.userPollVote ?? null
   }
 
   // Helper function to add comment at a specific path (supports nested replies)
@@ -1132,7 +963,7 @@ export default function CollabSpace() {
       return
     }
 
-    // Refresh comments for this post (will be picked up by polling, but refresh immediately)
+    // Refetch comments for this post
     try {
       const res = await fetch(`http://72.61.125.98:3001/api/comments/${postId}`)
       if (res.ok) {
@@ -1209,7 +1040,7 @@ export default function CollabSpace() {
       setNewComment({ ...newComment, [postId]: '' })
     }
 
-    // Refresh comments for this post (will be picked up by polling, but refresh immediately)
+    // Refetch comments for this post
     try {
       const res = await fetch(`http://72.61.125.98:3001/api/comments/${postId}`)
       if (res.ok) {
@@ -1423,60 +1254,28 @@ export default function CollabSpace() {
     )
   }
 
-  const handleVote = (postId, direction) => {
+  // Voting: always refetch from backend after vote
+  const handleVote = async (postId, direction) => {
     if (!requireAuth()) return
-
-    const currentVote = userReactions[postId]?.vote || null
-    let newVote = null
-
-    // Update user reactions
-    if (currentVote === direction) {
-      newVote = null // Remove vote
-    } else {
-      newVote = direction // New vote or change vote direction
+    // Call backend API to vote
+    try {
+      const res = await fetch(`http://72.61.125.98:3001/api/posts/${postId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction })
+      })
+      if (!res.ok) throw new Error('Failed to vote')
+    } catch (e) {
+      setModal({
+        isOpen: true,
+        title: 'Error',
+        message: 'Failed to vote. Please try again.',
+        type: 'error'
+      })
+      return
     }
-
-    setUserReactions({
-      ...userReactions,
-      [postId]: {
-        ...userReactions[postId],
-        vote: newVote
-      }
-    })
-
-    // Update aggregate vote counts
-    const aggregateCounts = loadAggregateCounts()
-    if (!aggregateCounts[postId]) {
-      aggregateCounts[postId] = { likes: 0, hearts: 0, comments: 0, voteData: { up: 0, down: 0 } }
-    }
-    if (!aggregateCounts[postId].voteData) {
-      aggregateCounts[postId].voteData = { up: 0, down: 0 }
-    }
-
-    // Adjust votes based on current and new vote
-    if (currentVote === 'up') {
-      aggregateCounts[postId].voteData.up = Math.max(0, aggregateCounts[postId].voteData.up - 1)
-    } else if (currentVote === 'down') {
-      aggregateCounts[postId].voteData.down = Math.max(0, aggregateCounts[postId].voteData.down - 1)
-    }
-
-    if (newVote === 'up') {
-      aggregateCounts[postId].voteData.up = (aggregateCounts[postId].voteData.up || 0) + 1
-    } else if (newVote === 'down') {
-      aggregateCounts[postId].voteData.down = (aggregateCounts[postId].voteData.down || 0) + 1
-    }
-
-    saveAggregateCounts(aggregateCounts)
-
-    // Update posts state
-    setForumPosts(forumPosts.map(post =>
-      post.id === postId
-        ? {
-          ...post,
-          votes: aggregateCounts[postId].voteData.up - aggregateCounts[postId].voteData.down
-        }
-        : post
-    ))
+    // Refetch posts to update vote counts
+    fetchPosts()
   }
 
   const handleSubmitPost = (e) => {
@@ -1581,7 +1380,7 @@ export default function CollabSpace() {
       }),
     }
 
-    setForumPosts([post, ...forumPosts])
+    // (Removed local state update for new post. Should be handled by backend and refetch.)
 
     const userId = getUserId()
 
@@ -1645,6 +1444,8 @@ export default function CollabSpace() {
       pollOptions: ['', ''],
     })
     setShowPostForm(false)
+    // Refetch posts to update UI
+    fetchPosts()
   }
 
   return (
