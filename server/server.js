@@ -1602,6 +1602,7 @@ import {
 
 // Create a new post
 app.post('/api/posts', authenticateToken, async (req, res) => {
+  console.log('DEBUG POST /api/posts', { body: req.body, user: req.user });
   try {
     const { content } = req.body;
     const userId = req.user.id;
@@ -1609,6 +1610,7 @@ app.post('/api/posts', authenticateToken, async (req, res) => {
     const post = await createPost(userId, content);
     res.status(201).json(post);
   } catch (err) {
+    console.error('Error in POST /api/posts:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1625,6 +1627,7 @@ app.get('/api/posts', async (req, res) => {
 
 // Add a comment to a post
 app.post('/api/posts/:postId/comments', authenticateToken, async (req, res) => {
+  console.log(`DEBUG POST /api/posts/${req.params.postId}/comments`, { body: req.body, user: req.user });
   try {
     const { comment } = req.body;
     const userId = req.user.id;
@@ -1633,6 +1636,7 @@ app.post('/api/posts/:postId/comments', authenticateToken, async (req, res) => {
     const newComment = await addComment(postId, userId, comment);
     res.status(201).json(newComment);
   } catch (err) {
+    console.error(`Error in POST /api/posts/${req.params.postId}/comments:`, err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1650,24 +1654,28 @@ app.get('/api/posts/:postId/comments', async (req, res) => {
 
 // Like a post
 app.post('/api/posts/:postId/like', authenticateToken, async (req, res) => {
+  console.log(`DEBUG POST /api/posts/${req.params.postId}/like`, { user: req.user });
   try {
     const userId = req.user.id;
     const { postId } = req.params;
     await addLike(postId, userId);
     res.json({ success: true });
   } catch (err) {
+    console.error(`Error in POST /api/posts/${req.params.postId}/like:`, err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // Remove like from a post
 app.delete('/api/posts/:postId/like', authenticateToken, async (req, res) => {
+  console.log(`DEBUG DELETE /api/posts/${req.params.postId}/like`, { user: req.user });
   try {
     const userId = req.user.id;
     const { postId } = req.params;
     await removeLike(postId, userId);
     res.json({ success: true });
   } catch (err) {
+    console.error(`Error in DELETE /api/posts/${req.params.postId}/like:`, err);
     res.status(500).json({ error: err.message });
   }
 });
