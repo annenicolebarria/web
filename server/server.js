@@ -1,3 +1,6 @@
+app.listen(3001, '0.0.0.0', () => {
+  console.log('Server running on 0.0.0.0:3001');
+});
 // Polyfill File class for Node.js (fixes undici ReferenceError)
 if (typeof File === 'undefined') {
   global.File = class File {};
