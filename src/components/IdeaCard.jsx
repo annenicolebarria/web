@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import { ThumbsDown, MessageCircle, ThumbsUp, Share2, User, Trash2, CornerDownLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -22,40 +23,14 @@ export default function IdeaCard({ idea, onReact }) {
     return user?.id || user?.email || 'anonymous'
   }
 
-  // Load user reactions from localStorage (per-user)
-  const loadUserReactions = () => {
-    if (!user) {
-      // Try to load from any available user data in localStorage
-      // This helps when user is still loading after refresh
-      return {}
-    }
-    const userId = getUserId()
-    const saved = localStorage.getItem(`home_ideas_user_reactions_${userId}`)
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (error) {
-        console.error('Error parsing reactions:', error)
-        return {}
-      }
-    }
-    return {}
-  }
+  // Likes state (global, from backend)
+  const [likes, setLikes] = useState([])
+  const [userLiked, setUserLiked] = useState(false)
+  const [likesLoading, setLikesLoading] = useState(false)
 
-  const [userReactions, setUserReactions] = useState(() => {
-    // Load immediately on mount
-    try {
-      if (!user) return {}
-      const userId = user?.id || user?.email || 'anonymous'
-      const saved = localStorage.getItem(`home_ideas_user_reactions_${userId}`)
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch (error) {
-      console.error('Error loading initial reactions:', error)
-    }
-    return {}
-  })
+  // Comments state (global, from backend)
+  const [comments, setComments] = useState([])
+  const [commentsLoading, setCommentsLoading] = useState(false)
   const [showComments, setShowComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [replyingTo, setReplyingTo] = useState({}) // { 'path': 'text' } e.g., '0' for comment 0, '0-0' for reply 0 of comment 0
@@ -72,140 +47,60 @@ export default function IdeaCard({ idea, onReact }) {
     return () => clearInterval(interval)
   }, [])
 
-  // Load user comments from localStorage (per-user)
-  const loadUserComments = () => {
-    if (!user) return []
-    const userId = getUserId()
-    const saved = localStorage.getItem(`home_ideas_user_comments_${userId}`)
-    if (saved) {
-      try {
-        const allComments = JSON.parse(saved)
-        return allComments[idea.id] || []
-      } catch (error) {
-        console.error('Error loading user comments from localStorage:', error)
-        return []
-      }
+  // Fetch comments from backend
+  const fetchComments = async () => {
+    setCommentsLoading(true)
+    try {
+      const res = await axios.get(`/api/posts/${idea.id}/comments`)
+      setComments(res.data)
+    } catch (err) {
+      setComments([])
     }
-    return []
+    setCommentsLoading(false)
   }
 
-  // Save user comments to localStorage (per-user)
-  const saveUserComments = (comments) => {
-    if (!user) return
-    const userId = getUserId()
+  // Fetch likes from backend
+  const fetchLikes = async () => {
+    setLikesLoading(true)
     try {
-      const allComments = JSON.parse(localStorage.getItem(`home_ideas_user_comments_${userId}`) || '{}')
-      allComments[idea.id] = comments
-      localStorage.setItem(`home_ideas_user_comments_${userId}`, JSON.stringify(allComments))
-    } catch (error) {
-      console.error('Error saving user comments to localStorage:', error)
-    }
-  }
-
-  const [userComments, setUserComments] = useState(() => {
-    try {
-      return loadUserComments()
-    } catch (error) {
-      console.error('Error initializing user comments:', error)
-      return []
-    }
-  })
-
-  // Reload user comments when user changes (login/logout)
-  useEffect(() => {
-    try {
-      if (user && (user.id || user.email)) {
-        const userId = user.id || user.email || 'anonymous'
-        const commentsKey = `home_ideas_user_comments_${userId}`
-        const savedComments = localStorage.getItem(commentsKey)
-        if (savedComments) {
-          try {
-            const allComments = JSON.parse(savedComments)
-            setUserComments(allComments[idea.id] || [])
-          } catch (error) {
-            console.error('Error parsing user comments:', error)
-            setUserComments([])
-          }
-        } else {
-          setUserComments([])
-        }
+      const res = await axios.get(`/api/posts/${idea.id}/likes`)
+      setLikes(res.data)
+      if (user) {
+        setUserLiked(res.data.some(like => like.user_id === user.id))
       } else {
-        setUserComments([])
+        setUserLiked(false)
       }
-    } catch (error) {
-      console.error('Error reloading user comments:', error)
-      setUserComments([])
+    } catch (err) {
+      setLikes([])
+      setUserLiked(false)
     }
-  }, [user?.id, user?.email, idea.id])
+    setLikesLoading(false)
+  }
 
-  // Save user comments to localStorage whenever they change
+  // Fetch comments and likes on mount and when idea/user changes
   useEffect(() => {
-    if (user && userComments && userComments.length >= 0) {
-      saveUserComments(userComments)
-    }
-  }, [userComments, user])
+    fetchComments()
+    fetchLikes()
+    // eslint-disable-next-line
+  }, [idea.id, user?.id])
 
-  // Get comments for an idea (all users - aggregate)
-  const getAllComments = () => {
-    const allComments = []
-    const currentUserId = user ? getUserId() : null
-    const keys = Object.keys(localStorage)
-    const seenCommentIds = new Set()
-
-    keys.forEach(key => {
-      if (key.startsWith('home_ideas_user_comments_')) {
-        try {
-          const userIdeasComments = JSON.parse(localStorage.getItem(key))
-          if (userIdeasComments[idea.id]) {
-            userIdeasComments[idea.id].forEach(comment => {
-              // Add only if not already added (avoid duplicates)
-              if (!seenCommentIds.has(comment.id)) {
-                allComments.push(comment)
-                seenCommentIds.add(comment.id)
-              }
-            })
-          }
-        } catch (error) {
-          // Skip invalid entries
-        }
-      }
-    })
-
-    // Add current user's NEW comments from state that aren't in localStorage yet
-    if (user && userComments && userComments.length > 0) {
-      userComments.forEach(comment => {
-        if (!seenCommentIds.has(comment.id)) {
-          allComments.push(comment)
-          seenCommentIds.add(comment.id)
-        }
+  // Add a comment via backend
+  const handleAddComment = async (commentText) => {
+    if (!requireAuth() || !commentText.trim()) return
+    try {
+      await axios.post(`/api/posts/${idea.id}/comments`, { comment: commentText }, {
+        headers: { Authorization: `Bearer ${user.token}` }
       })
+      fetchComments()
+    } catch (err) {
+      // Optionally show error
     }
+  }
 
-    // Sort by date (newest first)
-    allComments.sort((a, b) => new Date(b.date) - new Date(a.date))
-
-    // Organize comments into nested structure based on parentId
-    const commentMap = new Map()
-    const rootComments = []
-
-    // First pass: create map of all comments
-    allComments.forEach(comment => {
-      commentMap.set(comment.id, { ...comment, replies: [] })
-    })
-
-    // Second pass: organize into tree structure
-    allComments.forEach(comment => {
-      const commentNode = commentMap.get(comment.id)
-      if (comment.parentId && commentMap.has(comment.parentId)) {
-        // This is a reply, add to parent's replies
-        commentMap.get(comment.parentId).replies.push(commentNode)
-      } else {
-        // This is a root comment
-        rootComments.push(commentNode)
-      }
-    })
-
-    return rootComments
+  // Comments are now flat from backend; optionally, you can nest them if you support replies
+  const getAllComments = () => {
+    // Sort by created_at if available
+    return [...comments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }
 
   // Reload user data when user changes (login/logout)
@@ -284,108 +179,31 @@ export default function IdeaCard({ idea, onReact }) {
     return count
   }
 
-  // Calculate display count - show aggregate counts (all users)
-  // Use countUpdateKey to force re-render when counts change
+  // Display count from backend
   const getDisplayCount = (reactionType) => {
-    // Access countUpdateKey to create dependency for re-render
-    const _ = countUpdateKey
-
-    // If idea object has direct counts (e.g., from CollabSpace/ActiVista), use those as base
-    // Then merge with any updates from localStorage (home page reactions)
-    const aggregateCounts = loadAggregateCounts()
-    const localStorageCounts = aggregateCounts[idea.id] || { likes: 0, hearts: 0, comments: 0 }
-
-    // Use idea object counts as initial value, then add any updates from localStorage
-    // For likes and hearts, add the localStorage counts to the idea counts (to reflect new reactions)
-    const baseLikes = (typeof idea.likes === 'number' ? idea.likes : 0)
-    const baseHearts = (typeof idea.hearts === 'number' ? idea.hearts : 0)
-    const baseComments = (typeof idea.comments === 'number' ? idea.comments : 0)
-
-    // Calculate actual counts: use the maximum between idea base counts and localStorage counts
-    // This ensures we show the higher value (either from source or from Home page reactions)
-    const likes = Math.max(localStorageCounts.likes || 0, baseLikes)
-    const hearts = Math.max(localStorageCounts.hearts || 0, baseHearts)
-
-    if (reactionType === 'comments') {
-      // For comments, count actual comments from all users
-      const allComments = getAllComments()
-      const commentCount = countAllComments(allComments)
-      // Only show actual comment count, don't use base value from idea object
-      return commentCount
-    }
-
-    if (reactionType === 'likes') return likes
-    if (reactionType === 'hearts') return hearts
+    if (reactionType === 'comments') return comments.length
+    if (reactionType === 'likes') return likes.length
     return 0
   }
 
-  const toggleLike = () => {
-    if (!requireAuth()) return
-
-    const isLiked = userReactions[idea.id]?.liked || false
-    const wasUnliked = userReactions[idea.id]?.unliked || false
-
-    // Update user reactions
-    setUserReactions({
-      ...userReactions,
-      [idea.id]: {
-        ...userReactions[idea.id],
-        liked: !isLiked,
-        unliked: false // Reset unlike if liked
-      }
-    })
-
-    // Update aggregate counts
-    const aggregateCounts = loadAggregateCounts()
-    // Initialize with base counts from idea if not exists
-    const baseLikes = (typeof idea.likes === 'number' ? idea.likes : 0)
-    const baseHearts = (typeof idea.hearts === 'number' ? idea.hearts : 0)
-    const baseComments = (typeof idea.comments === 'number' ? idea.comments : 0)
-
-    if (!aggregateCounts[idea.id]) {
-      aggregateCounts[idea.id] = {
-        likes: baseLikes,
-        hearts: baseHearts,
-        comments: baseComments
-      }
-    }
-
-    // Ensure we don't go below base counts
-    const currentLikes = aggregateCounts[idea.id].likes || baseLikes
-    const currentHearts = aggregateCounts[idea.id].hearts || baseHearts
-
-    if (!isLiked) {
-      aggregateCounts[idea.id].likes = Math.max(currentLikes, baseLikes) + 1
-      if (wasUnliked && aggregateCounts[idea.id].hearts > 0) {
-        aggregateCounts[idea.id].hearts = Math.max(0, aggregateCounts[idea.id].hearts - 1)
-      }
-      // Track user's own like action and notify content owner
-      const userId = getUserId()
-      if (userId && idea) {
-        notifyContentOwner(idea.id, userId, 'like', idea.title || 'idea', 'home')
-        addUserActivity(userId, {
-          type: 'like',
-          title: `Liked: ${idea.title}`,
-          ideaId: idea.id
+  // Like/unlike using backend
+  const toggleLike = async () => {
+    if (!requireAuth() || !user) return
+    try {
+      if (!userLiked) {
+        await axios.post(`/api/posts/${idea.id}/like`, {}, {
+          headers: { Authorization: `Bearer ${user.token}` }
+        })
+      } else {
+        await axios.delete(`/api/posts/${idea.id}/like`, {
+          headers: { Authorization: `Bearer ${user.token}` }
         })
       }
-    } else {
-      aggregateCounts[idea.id].likes = Math.max(baseLikes, (aggregateCounts[idea.id].likes || baseLikes) - 1)
-      // Track unlike action
-      const userId = getUserId()
-      if (userId && idea) {
-        notifyContentOwner(idea.id, userId, 'unlike', idea.title || 'idea', 'home')
-        addUserActivity(userId, {
-          type: 'unlike',
-          title: `Unliked: ${idea.title}`,
-          ideaId: idea.id
-        })
-      }
+      fetchLikes()
+      if (onReact) onReact(idea.id, 'likes')
+    } catch (err) {
+      // Optionally show error
     }
-
-    saveAggregateCounts(aggregateCounts)
-
-    if (onReact) onReact(idea.id, 'likes')
   }
 
   const toggleUnlike = () => {
