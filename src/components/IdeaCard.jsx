@@ -103,81 +103,7 @@ export default function IdeaCard({ idea, onReact }) {
     return [...comments].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }
 
-  // Reload user data when user changes (login/logout)
-  useEffect(() => {
-    try {
-      if (user && (user.id || user.email)) {
-        // Load data for the logged-in user
-        const userId = user.id || user.email || 'anonymous'
-        const reactionsKey = `home_ideas_user_reactions_${userId}`
-
-        const savedReactions = localStorage.getItem(reactionsKey)
-
-        if (savedReactions) {
-          try {
-            const reactions = JSON.parse(savedReactions)
-            setUserReactions(reactions)
-            console.log('Loaded reactions for user:', userId, reactions)
-          } catch (error) {
-            console.error('Error parsing user reactions:', error)
-          }
-        }
-
-        // Force update of counts when user data loads
-        setCountUpdateKey(prev => prev + 1)
-      }
-    } catch (error) {
-      console.error('Error reloading user data:', error)
-    }
-  }, [user?.id, user?.email, idea.id])
-
-  // Save reactions to localStorage (per-user) - only when userReactions has actual data
-  useEffect(() => {
-    if (!user) return
-    const userId = getUserId()
-    // Only save if userReactions is not empty or has changed
-    if (Object.keys(userReactions).length > 0) {
-      try {
-        localStorage.setItem(`home_ideas_user_reactions_${userId}`, JSON.stringify(userReactions))
-      } catch (error) {
-        console.error('Error saving user reactions to localStorage:', error)
-      }
-    }
-  }, [userReactions, user])
-
-  // Load aggregate counts (shared across all users)
-  const loadAggregateCounts = () => {
-    try {
-      const saved = localStorage.getItem('home_ideas_aggregate_counts')
-      if (saved) {
-        return JSON.parse(saved)
-      }
-    } catch (error) {
-      console.error('Error loading aggregate counts:', error)
-    }
-    return {}
-  }
-
-  // Save aggregate counts (shared across all users)
-  const saveAggregateCounts = (counts) => {
-    try {
-      localStorage.setItem('home_ideas_aggregate_counts', JSON.stringify(counts))
-    } catch (error) {
-      console.error('Error saving aggregate counts:', error)
-    }
-  }
-
-  // Helper function to count all comments recursively (including nested replies)
-  const countAllComments = (comments) => {
-    if (!comments || !Array.isArray(comments)) return 0
-    let count = comments.length
-    comments.forEach(comment => {
-      if (comment.replies && comment.replies.length > 0) {
-        count += countAllComments(comment.replies)
-      }
-    })
-    return count
-  }
+  // All localStorage and local state logic for comments/likes removed. All actions are backend-driven.
 
   // Display count from backend
   const getDisplayCount = (reactionType) => {
@@ -206,51 +132,8 @@ export default function IdeaCard({ idea, onReact }) {
     }
   }
 
-  const toggleUnlike = () => {
-    if (!requireAuth()) return
-
-    const isUnliked = userReactions[idea.id]?.unliked || false
-    const wasLiked = userReactions[idea.id]?.liked || false
-
-    // Update user reactions
-    setUserReactions({
-      ...userReactions,
-      [idea.id]: {
-        ...userReactions[idea.id],
-        unliked: !isUnliked,
-        liked: false // Reset like if unliked
-      }
-    })
-
-    // Update aggregate counts
-    const aggregateCounts = loadAggregateCounts()
-    if (!aggregateCounts[idea.id]) {
-      aggregateCounts[idea.id] = { likes: 0, hearts: 0, comments: 0 }
-    }
-
-    if (!isUnliked) {
-      aggregateCounts[idea.id].hearts = (aggregateCounts[idea.id].hearts || 0) + 1
-      if (wasLiked && aggregateCounts[idea.id].likes > 0) {
-        aggregateCounts[idea.id].likes = Math.max(0, aggregateCounts[idea.id].likes - 1)
-      }
-      // Track user's own unlike action and notify content owner
-      const userId = getUserId()
-      if (userId && idea) {
-        notifyContentOwner(idea.id, userId, 'unlike', idea.title || 'idea', 'home')
-        addUserActivity(userId, {
-          type: 'unlike',
-          title: `Unliked: ${idea.title}`,
-          ideaId: idea.id
-        })
-      }
-    } else {
-      aggregateCounts[idea.id].hearts = Math.max(baseHearts, (aggregateCounts[idea.id].hearts || baseHearts) - 1)
-    }
-
-    saveAggregateCounts(aggregateCounts)
-
-    if (onReact) onReact(idea.id, 'hearts')
-  }
+  // Unlike/heart functionality removed (not supported in backend)
+  const toggleUnlike = () => { }
 
   const handleShare = async () => {
     const shareData = {
@@ -354,30 +237,11 @@ export default function IdeaCard({ idea, onReact }) {
     return { filtered, deleted: deletedCount }
   }
 
-  const deleteComment = (commentId) => {
-    if (!requireAuth()) return
+  // Delete comment: not implemented, unless backend supports it
+  const deleteComment = (commentId) => { }
 
-    const { filtered: updatedComments, deleted: deletedCount } = deleteCommentById(userComments, commentId)
-
-    if (deletedCount === 0) return // Comment not found
-
-    setUserComments(updatedComments)
-
-    // Update aggregate counts
-    const aggregateCounts = loadAggregateCounts()
-    if (!aggregateCounts[idea.id]) {
-      aggregateCounts[idea.id] = { likes: 0, hearts: 0, comments: 0 }
-    }
-    aggregateCounts[idea.id].comments = Math.max(0, (aggregateCounts[idea.id].comments || 0) - deletedCount)
-    saveAggregateCounts(aggregateCounts)
-
-    // Force re-render to update display count
-    setCountUpdateKey(prev => prev + 1)
-
-    if (onReact) onReact(idea.id, 'comments')
-  }
-
-  const addComment = (parentPath = null) => {
+  // Add comment using backend only
+  const addComment = async (parentPath = null) => {
     if (!requireAuth()) return
 
     let commentText = ''
@@ -389,82 +253,12 @@ export default function IdeaCard({ idea, onReact }) {
       if (!commentText.trim()) return
     }
 
-    // Find the parent comment ID if this is a reply
-    let parentCommentId = null
-    if (parentPath) {
-      const allComments = getAllComments()
-      const pathParts = parentPath.split('-').map(Number)
-      let targetComment = allComments[pathParts[0]]
-      for (let i = 1; i < pathParts.length; i++) {
-        if (targetComment && targetComment.replies) {
-          targetComment = targetComment.replies[pathParts[i]]
-        }
-      }
-      if (targetComment) {
-        parentCommentId = targetComment.id
-      }
-    }
-
-    // Extract mentions from comment text (@username or @full name)
-    // Match @ followed by one or more words (allowing spaces between words)
-    const mentionRegex = /@([\w]+(?:\s+[\w]+)*)/g
-    const mentions = []
-    let match
-    while ((match = mentionRegex.exec(commentText)) !== null) {
-      mentions.push(match[1])
-    }
-
-    const comment = {
-      id: Date.now() + Math.random(),
-      author: user.name || user.username || 'You',
-      comment: commentText,
-      date: new Date().toISOString(),
-      replies: [],
-      mentions: mentions.length > 0 ? mentions : undefined,
-      parentId: parentCommentId // Store parent comment ID for replies
-    }
-
-    // Always add as top-level comment - replies will be grouped by parentId during display
-    const updatedComments = [...userComments, comment]
-    setUserComments(updatedComments)
-
+    await handleAddComment(commentText)
     if (parentPath !== null) {
       setReplyingTo({ ...replyingTo, [parentPath]: '' })
     } else {
       setNewComment('')
     }
-
-    // Update aggregate counts
-    const aggregateCounts = loadAggregateCounts()
-    if (!aggregateCounts[idea.id]) {
-      aggregateCounts[idea.id] = { likes: 0, hearts: 0, comments: 0 }
-    }
-    aggregateCounts[idea.id].comments = (aggregateCounts[idea.id].comments || 0) + 1
-    saveAggregateCounts(aggregateCounts)
-
-    // Force re-render to update display count
-    setCountUpdateKey(prev => prev + 1)
-
-    // Add activity for comment and notify content owner if it's someone else's idea
-    const userId = getUserId()
-    if (userId && idea) {
-      // Track user's own comment action
-      addUserActivity(userId, {
-        type: 'comment',
-        title: `Commented on: ${idea.title}`,
-        ideaId: idea.id
-      })
-      // Check if this is someone else's idea and notify them
-      // Since ideas on Home page have hardcoded authors, check if idea.author matches user name
-      const isUserIdea = idea.author && (idea.author === user.name || idea.author === user.username)
-      if (!isUserIdea && idea.author) {
-        // This is someone else's idea, try to notify them if we can match by author name
-        // Note: Since we're using localStorage per-user, we can't directly notify another user
-        // But we can track ownership if the idea author matches a user
-        notifyContentOwner(idea.id, userId, 'comment', idea.title || 'idea', 'home')
-      }
-    }
-
     if (onReact) onReact(idea.id, 'comments')
   }
 
@@ -687,25 +481,15 @@ export default function IdeaCard({ idea, onReact }) {
           <div className="flex items-center space-x-6 pt-4 border-t border-gray-100" key={`reactions-${idea.id}-${countUpdateKey}`}>
             <button
               onClick={toggleLike}
-              className={`flex items-center space-x-2 transition-colors ${userReactions[idea.id]?.liked
+              className={`flex items-center space-x-2 transition-colors ${userLiked
                 ? 'text-primary-600'
                 : 'text-gray-600 hover:text-primary-600'
                 }`}
             >
-              <ThumbsUp className={`w-5 h-5 ${userReactions[idea.id]?.liked ? 'fill-current' : ''}`} />
+              <ThumbsUp className={`w-5 h-5 ${userLiked ? 'fill-current' : ''}`} />
               <span>{getDisplayCount('likes')}</span>
             </button>
-            <button
-              onClick={toggleUnlike}
-              className={`flex items-center space-x-2 transition-colors ${userReactions[idea.id]?.unliked
-                ? 'text-blue-600'
-                : 'text-gray-600 hover:text-blue-600'
-                }`}
-              title={userReactions[idea.id]?.unliked ? 'Remove unlike' : 'Unlike'}
-            >
-              <ThumbsDown className={`w-5 h-5 ${userReactions[idea.id]?.unliked ? 'fill-current' : ''}`} />
-              <span>{getDisplayCount('hearts')}</span>
-            </button>
+            {/* Unlike/heart button removed since not supported in backend */}
             <button
               onClick={handleComment}
               className={`flex items-center space-x-2 transition-colors ${showComments
