@@ -19,7 +19,7 @@ export default function CollabSpace() {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info' })
   const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, postId: null })
   const [supportByPost, setSupportByPost] = useState({})
-const [forumPosts, setForumPosts] = useState([])
+  const [forumPosts, setForumPosts] = useState([])
   // Fetch support state for all posts from backend
   useEffect(() => {
     const fetchSupport = async () => {
@@ -612,7 +612,6 @@ const [forumPosts, setForumPosts] = useState([])
   }, [])
 
   // ...userReactions state now handled above...
-  const [forumPosts, setForumPosts] = useState([])
   const [timeUpdateKey, setTimeUpdateKey] = useState(0) // Force re-render for time updates
   const [showComments, setShowComments] = useState({})
 
