@@ -5,6 +5,9 @@ import { ThumbsDown, MessageCircle, ThumbsUp, Share2, User, Trash2, CornerDownLe
 import { useAuth } from '../context/AuthContext'
 import { addUserActivity, setPostOwner, notifyContentOwner, formatRelativeTime, validateAndFixDate } from '../pages/Home'
 
+// Set your public backend URL here
+axios.defaults.baseURL = 'http://72.61.125.98:3001'; // <-- Updated to match backend port
+
 export default function IdeaCard({ idea, onReact }) {
   const navigate = useNavigate()
   const { user } = useAuth()
