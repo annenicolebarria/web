@@ -4,6 +4,7 @@ app.listen(3001, '0.0.0.0', () => {
 if (typeof File === 'undefined') {
   global.File = class File {};
 }
+import './polyfill.js'; // must be the first line!
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
