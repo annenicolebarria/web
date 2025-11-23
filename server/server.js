@@ -1725,7 +1725,7 @@ app.get('/api/posts/:postId/support', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://72.61.125.98:${PORT}`);
   console.log(`Database: SQLite (ecoplatform.db)`);
   console.log(`Proxy endpoint: http://72.61.125.98:${PORT}/api/proxy?url=<target-url>`);
