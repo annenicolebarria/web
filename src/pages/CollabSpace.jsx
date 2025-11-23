@@ -19,7 +19,7 @@ export default function CollabSpace() {
   const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'info' })
   const [deleteConfirmModal, setDeleteConfirmModal] = useState({ isOpen: false, postId: null })
   const [supportByPost, setSupportByPost] = useState({})
-
+const [forumPosts, setForumPosts] = useState([])
   // Fetch support state for all posts from backend
   useEffect(() => {
     const fetchSupport = async () => {
